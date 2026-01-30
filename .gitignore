@@ -1,21 +1,41 @@
+# -------------------------------------
+# Root-level gitignore for monorepo
+# -------------------------------------
+
 # Node
-node_modules
+node_modules/
+**/node_modules/
+
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Build
-dist
-build
-coverage
+# Build outputs
+dist/
+**/dist/
+build/
+**/build/
+coverage/
+**/coverage/
 
-# Env
+# Env files
 .env
-.env.*
+*.env
+**/*.env
 
-# OS/IDE
+# Prisma generated files
+**/.prisma/
+
+# System / IDE
 .DS_Store
-.vscode
-.idea
+.vscode/
+.idea/
 *.swp
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
