@@ -2,11 +2,11 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { createValidationPipe } from './core/validation/validation.pipe';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { RedisService } from './core/redis/redis.service';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Evita procesos colgados / locks (muy útil en Windows + Prisma)
   app.enableShutdownHooks();
 
   app.useGlobalPipes(createValidationPipe());
@@ -27,6 +27,16 @@ async function bootstrap() {
 
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('docs', app, document);
+
+  // --- PRUEBA DE CONEXIÓN REDIS ---
+  try {
+    const redisService = app.get(RedisService);
+    const result = await redisService.ping();
+    console.log('🚀 REDIS STATUS =>', result);
+  } catch (error) {
+    console.error('❌ REDIS ERROR =>', error.message);
+  }
+  // --------------------------------
 
   await app.listen(3000);
 }

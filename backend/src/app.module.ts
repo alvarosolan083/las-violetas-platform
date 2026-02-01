@@ -4,12 +4,16 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { AuthModule } from './modules/auth/auth.module';
 import { PrismaModule } from './core/prisma/prisma.module';
 import { ConfigModule } from './core/config/config.module';
+import { RedisModule } from './core/redis/redis.module';
 
 @Module({
-  imports: [ConfigModule, PrismaModule, AuthModule],
+  imports: [
+    ConfigModule,
+    PrismaModule,
+    RedisModule,
+    AuthModule
+  ],
   providers: [
-    // Todo endpoint es privado por defecto.
-    // Para hacerlo público, usamos @Public().
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
