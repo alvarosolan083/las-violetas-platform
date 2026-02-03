@@ -26,6 +26,18 @@ export class RedisService implements OnModuleDestroy {
         return this.redis.del(key);
     }
 
+    /**
+     * GETDEL atómico (Redis >= 6.2):
+     * - lee el valor
+     * - borra la key
+     * en una sola operación => blindado ante concurrencia.
+     */
+    async getDel(key: string): Promise<string | null> {
+        // ioredis no tipa getdel en todas las versiones, por eso any
+        // @ts-ignore
+        return (this.redis as any).getdel(key) as Promise<string | null>;
+    }
+
     async ping() {
         return this.redis.ping();
     }

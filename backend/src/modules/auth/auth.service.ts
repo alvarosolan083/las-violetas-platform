@@ -6,12 +6,20 @@ import { randomUUID } from 'crypto';
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { RedisService } from '../../core/redis/redis.service';
 
-type AccessPayload = { sub: string; role: string };
-type RefreshPayload = { sub: string; role: string; jti: string };
+type JwtPayload = {
+    sub: string;
+    role: string;
+    jti: string;
+    iat?: number;
+    exp?: number;
+};
 
 @Injectable()
 export class AuthService {
     private readonly refreshSecret: string;
+
+    private static readonly ACCESS_TTL_SECONDS = 15 * 60; // 15m
+    private static readonly REFRESH_TTL_SECONDS = 7 * 24 * 60 * 60; // 7d
 
     constructor(
         private readonly prisma: PrismaService,
@@ -22,10 +30,16 @@ export class AuthService {
         this.refreshSecret = this.config.getOrThrow<string>('JWT_REFRESH_TOKEN_SECRET');
     }
 
+    // ---------- Redis keys ----------
     private refreshKey(userId: string) {
         return `auth:refresh:jti:${userId}`;
     }
 
+    private blacklistKey(jti: string) {
+        return `auth:blacklist:access:${jti}`;
+    }
+
+    // ---------- Auth ----------
     async validateUser(email: string, password: string) {
         const user = await this.prisma.user.findUnique({ where: { email } });
         if (!user) throw new UnauthorizedException('Credenciales inválidas');
@@ -39,71 +53,93 @@ export class AuthService {
     }
 
     async login(user: { id: string; role: string }) {
-        const accessPayload: AccessPayload = { sub: user.id, role: user.role };
+        const accessPayload: JwtPayload = {
+            sub: user.id,
+            role: user.role,
+            jti: randomUUID(),
+        };
+
+        const refreshPayload: JwtPayload = {
+            sub: user.id,
+            role: user.role,
+            jti: randomUUID(),
+        };
 
         const access_token = await this.jwt.signAsync(accessPayload, {
-            expiresIn: '15m',
+            expiresIn: `${AuthService.ACCESS_TTL_SECONDS}s`,
         });
 
-        // Refresh JTI único
-        const jti = randomUUID();
-        const refreshPayload: RefreshPayload = { sub: user.id, role: user.role, jti };
-
         const refresh_token = await this.jwt.signAsync(refreshPayload, {
-            expiresIn: '7d',
+            expiresIn: `${AuthService.REFRESH_TTL_SECONDS}s`,
             secret: this.refreshSecret,
         });
 
-        // Guardamos SOLO el jti válido (one-time session)
-        await this.redis.set(this.refreshKey(user.id), jti, 7 * 24 * 60 * 60);
+        await this.redis.set(
+            this.refreshKey(user.id),
+            refreshPayload.jti,
+            AuthService.REFRESH_TTL_SECONDS,
+        );
 
         return { access_token, refresh_token };
     }
 
+    // ---------- Refresh rotation (ATÓMICA real) ----------
     async refresh(refresh_token: string) {
-        // 1) verificar refresh JWT
-        let payload: RefreshPayload;
+        let payload: JwtPayload;
+
+        // 1) Verificar firma/exp del refresh token
         try {
-            payload = await this.jwt.verifyAsync<RefreshPayload>(refresh_token, {
+            payload = await this.jwt.verifyAsync<JwtPayload>(refresh_token, {
                 secret: this.refreshSecret,
             });
         } catch {
             throw new UnauthorizedException('Refresh token inválido');
         }
 
-        // --- CAMBIO ATÓMICO AQUÍ ---
+        // 2) ATÓMICO: lee y borra la sesión en una sola operación (GETDEL)
         const key = this.refreshKey(payload.sub);
+        const storedJti = await this.redis.getDel(key);
 
-        // Obtenemos el JTI y lo BORRAMOS en una sola operación (o inmediatamente después)
-        // Esto invalida el token para cualquier otra petición que venga detrás
-        const storedJti = await this.redis.get(key);
+        // IMPORTANTE: respuesta genérica (no filtramos si la sesión existe)
+        if (!storedJti) {
+            throw new UnauthorizedException('Refresh token inválido');
+        }
 
-        if (!storedJti) throw new UnauthorizedException('Sesión no encontrada');
-
-        // Si el JTI no coincide, es un ataque o token viejo
+        // 3) Validación contra replay
         if (storedJti !== payload.jti) {
             throw new UnauthorizedException('Refresh token inválido');
         }
 
-        // IMPORTANTE: Borramos el JTI usado antes de generar el nuevo
-        // Así, si haces doble clic, la segunda petición verá que ya no hay JTI
-        await this.redis.del(key);
-
-        // 3) rotación: generar nuevo par + nuevo jti (el login volverá a crear la key en Redis)
+        // 4) Emitimos nuevo par y re-escribimos el nuevo JTI en Redis
         return this.login({ id: payload.sub, role: payload.role });
     }
 
+    // ---------- Logout & Blacklist ----------
     async logout(refresh_token: string) {
-        let payload: RefreshPayload;
         try {
-            payload = await this.jwt.verifyAsync<RefreshPayload>(refresh_token, {
+            const payload = await this.jwt.verifyAsync<JwtPayload>(refresh_token, {
                 secret: this.refreshSecret,
             });
+            await this.redis.del(this.refreshKey(payload.sub));
         } catch {
-            return { message: 'Sesión cerrada' };
+            // Silencioso por seguridad
+        }
+        return { message: 'Sesión cerrada' };
+    }
+
+    async blacklistAccessToken(jti: string, exp: number) {
+        const now = Math.floor(Date.now() / 1000);
+        const ttl = exp - now;
+
+        if (ttl > 0) {
+            await this.redis.set(this.blacklistKey(jti), 'true', ttl);
         }
 
-        await this.redis.del(this.refreshKey(payload.sub));
-        return { message: 'Sesión cerrada' };
+        return { message: 'Access token revocado' };
+    }
+
+    async isAccessTokenBlacklisted(jti: string) {
+        const val = await this.redis.get(this.blacklistKey(jti));
+        return !!val;
     }
 }

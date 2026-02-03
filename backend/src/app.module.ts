@@ -5,13 +5,15 @@ import { AuthModule } from './modules/auth/auth.module';
 import { PrismaModule } from './core/prisma/prisma.module';
 import { ConfigModule } from './core/config/config.module';
 import { RedisModule } from './core/redis/redis.module';
+import { HealthModule } from './modules/health/health.module';
 
 @Module({
   imports: [
     ConfigModule,
     PrismaModule,
     RedisModule,
-    AuthModule
+    AuthModule,
+    HealthModule
   ],
   providers: [
     {

@@ -3,10 +3,12 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../core/prisma/prisma.service';
+import { RedisService } from '../../../core/redis/redis.service';
 
 type JwtPayload = {
     sub: string;
     role: string;
+    jti: string;
     iat?: number;
     exp?: number;
 };
@@ -16,6 +18,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     constructor(
         private readonly config: ConfigService,
         private readonly prisma: PrismaService,
+        private readonly redis: RedisService,
     ) {
         super({
             jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
@@ -24,7 +27,24 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
         });
     }
 
+    private blacklistKey(jti: string) {
+        return `auth:blacklist:access:${jti}`;
+    }
+
     async validate(payload: JwtPayload) {
+        if (!payload?.jti) {
+            throw new UnauthorizedException('Token inválido');
+        }
+        if (!payload?.exp) {
+            throw new UnauthorizedException('Token inválido');
+        }
+
+        const isBlacklisted = await this.redis.get(this.blacklistKey(payload.jti));
+        if (isBlacklisted) {
+            // Mensaje consistente (sin filtrar demasiado)
+            throw new UnauthorizedException('Sesión revocada');
+        }
+
         const user = await this.prisma.user.findUnique({
             where: { id: payload.sub },
             select: {
@@ -40,9 +60,13 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
         });
 
         if (!user || !user.active) {
-            throw new UnauthorizedException('Usuario no válido o inactivo');
+            throw new UnauthorizedException('Token inválido');
         }
 
-        return user;
+        return {
+            ...user,
+            jti: payload.jti,
+            exp: payload.exp,
+        };
     }
 }
