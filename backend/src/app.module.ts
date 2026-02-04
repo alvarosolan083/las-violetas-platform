@@ -6,12 +6,14 @@ import { PrismaModule } from './core/prisma/prisma.module';
 import { ConfigModule } from './core/config/config.module';
 import { RedisModule } from './core/redis/redis.module';
 import { HealthModule } from './modules/health/health.module';
+import { RateLimitModule } from './core/rate-limit/rate-limit.module';
 
 @Module({
   imports: [
     ConfigModule,
     PrismaModule,
     RedisModule,
+    RateLimitModule,
     AuthModule,
     HealthModule
   ],

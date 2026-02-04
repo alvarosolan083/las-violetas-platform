@@ -26,6 +26,7 @@ export class RedisService implements OnModuleDestroy {
         return this.redis.del(key);
     }
 
+
     /**
      * GETDEL atómico (Redis >= 6.2):
      * - lee el valor
@@ -36,6 +37,17 @@ export class RedisService implements OnModuleDestroy {
         // ioredis no tipa getdel en todas las versiones, por eso any
         // @ts-ignore
         return (this.redis as any).getdel(key) as Promise<string | null>;
+    }
+
+    async incrWithExpire(key: string, ttlSeconds: number) {
+        const count = await this.redis.incr(key);
+
+        // Si es el primer hit, fijamos TTL para crear la ventana
+        if (count === 1 && ttlSeconds > 0) {
+            await this.redis.expire(key, ttlSeconds);
+        }
+
+        return count;
     }
 
     async ping() {

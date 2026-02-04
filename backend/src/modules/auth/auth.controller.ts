@@ -14,6 +14,8 @@ import {
     ApiOkResponse,
     ApiUnauthorizedResponse,
     ApiBody,
+    ApiTooManyRequestsResponse,
+    ApiCreatedResponse,
 } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { Public } from './decorators/public.decorator';
@@ -21,6 +23,8 @@ import { LoginDto } from './dto/login.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RefreshDto } from './dto/refresh.dto';
 import { LogoutAccessDto } from './dto/logout-access.dto';
+import { RateLimit } from '../../core/rate-limit/rate-limit.decorator';
+import { RateLimitGuard } from '../../core/rate-limit/rate-limit.guard';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -28,10 +32,13 @@ export class AuthController {
     constructor(private readonly authService: AuthService) { }
 
     @Public()
+    @UseGuards(RateLimitGuard)
+    @RateLimit({ keyPrefix: 'auth:login', limit: 5, ttlSeconds: 15 * 60 })
     @Post('login')
     @HttpCode(HttpStatus.CREATED)
-    @ApiOkResponse({ description: 'JWT access y refresh tokens' })
+    @ApiCreatedResponse({ description: 'JWT access y refresh tokens' })
     @ApiUnauthorizedResponse({ description: 'Credenciales inválidas' })
+    @ApiTooManyRequestsResponse({ description: 'Demasiados intentos. Intenta más tarde.' })
     @ApiBody({ type: LoginDto })
     async login(@Body() body: LoginDto) {
         const user = await this.authService.validateUser(body.email, body.password);
@@ -39,10 +46,13 @@ export class AuthController {
     }
 
     @Public()
+    @UseGuards(RateLimitGuard)
+    @RateLimit({ keyPrefix: 'auth:refresh', limit: 30, ttlSeconds: 60 })
     @Post('refresh')
     @HttpCode(HttpStatus.OK)
     @ApiOkResponse({ description: 'Tokens rotados correctamente' })
     @ApiUnauthorizedResponse({ description: 'Refresh token inválido' })
+    @ApiTooManyRequestsResponse({ description: 'Demasiadas solicitudes. Intenta más tarde.' })
     @ApiBody({ type: RefreshDto })
     async refresh(@Body() body: RefreshDto) {
         return this.authService.refresh(body.refresh_token);

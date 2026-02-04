@@ -11,6 +11,9 @@ async function bootstrap() {
 
   app.useGlobalPipes(createValidationPipe());
 
+  // Para que req.ip funcione correctamente detrás de proxies (Nginx, Railway, Render, etc.)
+  app.getHttpAdapter().getInstance().set('trust proxy', 1);
+
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Las Violetas API')
     .setDescription('API para gestión del condominio Las Violetas')
