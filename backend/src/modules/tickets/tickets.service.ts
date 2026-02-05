@@ -1,0 +1,96 @@
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { PrismaService } from '../../core/prisma/prisma.service';
+import { CreateTicketDto } from './dto/create-ticket.dto';
+
+interface TicketListQuery {
+    page: number;
+    pageSize: number;
+    status?: string;
+    priority?: string;
+    search?: string;
+}
+
+@Injectable()
+export class TicketsService {
+    constructor(private readonly prisma: PrismaService) { }
+
+    // -----------------------------
+    // CREATE
+    // -----------------------------
+    create(condoId: string, userId: string, dto: CreateTicketDto) {
+        return this.prisma.ticket.create({
+            data: {
+                condominiumId: condoId,
+                createdById: userId,
+                title: dto.title,
+                description: dto.description,
+                category: dto.category,
+                priority: dto.priority ?? 'MEDIUM',
+            },
+        });
+    }
+
+    // -----------------------------
+    // LIST (con paginación y filtros)
+    // -----------------------------
+    async list(condoId: string, q: TicketListQuery) {
+        const skip = (q.page - 1) * q.pageSize;
+        const take = q.pageSize;
+
+        const where: any = { condominiumId: condoId };
+
+        if (q.status) where.status = q.status;
+        if (q.priority) where.priority = q.priority;
+
+        if (q.search) {
+            where.OR = [
+                { title: { contains: q.search, mode: 'insensitive' } },
+                { description: { contains: q.search, mode: 'insensitive' } },
+            ];
+        }
+
+        const [items, total] = await Promise.all([
+            this.prisma.ticket.findMany({
+                where,
+                orderBy: { createdAt: 'desc' },
+                skip,
+                take,
+                include: {
+                    createdBy: { select: { id: true, name: true, email: true } },
+                },
+            }),
+
+            this.prisma.ticket.count({ where }),
+        ]);
+
+        return {
+            page: q.page,
+            pageSize: q.pageSize,
+            total,
+            totalPages: Math.ceil(total / q.pageSize),
+            items,
+        };
+    }
+
+    // -----------------------------
+    // DETAIL
+    // -----------------------------
+    async get(condoId: string, ticketId: string) {
+        const t = await this.prisma.ticket.findFirst({
+            where: { id: ticketId, condominiumId: condoId },
+            include: {
+                createdBy: { select: { id: true, name: true, email: true } },
+                comments: {
+                    orderBy: { createdAt: 'asc' },
+                    include: {
+                        author: { select: { id: true, name: true, email: true } },
+                    },
+                },
+                attachments: true,
+            },
+        });
+
+        if (!t) throw new NotFoundException('Ticket no encontrado');
+        return t;
+    }
+}

@@ -1,34 +1,54 @@
-import { PrismaClient, Role } from '@prisma/client';
-import * as bcrypt from 'bcrypt';
+import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
 async function main() {
-    const passwordHash = await bcrypt.hash('Admin123!', 10);
+    const adminEmail = 'admin@test.com';
 
-    await prisma.user.upsert({
-        where: { email: 'admin@test.com' },
+    const user = await prisma.user.findUnique({ where: { email: adminEmail } });
+    if (!user) {
+        throw new Error(`No existe el usuario ${adminEmail}. Crea el usuario primero o cambia el email en seed.ts`);
+    }
+
+    // 1) Crear condominio (o reutilizar si ya existe)
+    const condo = await prisma.condominium.upsert({
+        where: { id: 'violetas-condo' },
+        update: {},
+        create: {
+            id: 'violetas-condo',
+            name: 'Condominio Las Violetas',
+            address: 'Santiago, Chile',
+        },
+    });
+
+    // 2) Membresía del usuario al condominio (ADMINISTRADOR)
+    await prisma.condoMembership.upsert({
+        where: {
+            condominiumId_userId: {
+                condominiumId: condo.id,
+                userId: user.id,
+            },
+        },
         update: {
-            name: 'Admin Test',
-            role: Role.ADMIN,
+            role: 'ADMINISTRADOR',
             active: true,
-            passwordHash,
         },
         create: {
-            name: 'Admin Test',
-            email: 'admin@test.com',
-            passwordHash,
-            role: Role.ADMIN,
+            condominiumId: condo.id,
+            userId: user.id,
+            role: 'ADMINISTRADOR',
             active: true,
         },
     });
 
-    console.log('✅ Seed OK: admin@test.com / Admin123!');
+    console.log('✅ Seed OK');
+    console.log('condoId =>', condo.id);
+    console.log('userId  =>', user.id);
 }
 
 main()
     .catch((e) => {
-        console.error('❌ Seed failed', e);
+        console.error('❌ Seed error:', e);
         process.exit(1);
     })
     .finally(async () => {

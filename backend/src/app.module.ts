@@ -7,6 +7,9 @@ import { ConfigModule } from './core/config/config.module';
 import { RedisModule } from './core/redis/redis.module';
 import { HealthModule } from './modules/health/health.module';
 import { RateLimitModule } from './core/rate-limit/rate-limit.module';
+import { CondoModule } from './modules/condo/condo.module';
+import { TicketsModule } from './modules/tickets/tickets.module';
+import { TicketCommentsModule } from './modules/ticket-comments/ticket-comments.module';
 
 @Module({
   imports: [
@@ -15,7 +18,10 @@ import { RateLimitModule } from './core/rate-limit/rate-limit.module';
     RedisModule,
     RateLimitModule,
     AuthModule,
-    HealthModule
+    HealthModule,
+    CondoModule,
+    TicketsModule,
+    TicketCommentsModule,
   ],
   providers: [
     {
