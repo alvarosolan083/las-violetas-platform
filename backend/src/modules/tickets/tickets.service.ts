@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 
@@ -92,5 +92,32 @@ export class TicketsService {
 
         if (!t) throw new NotFoundException('Ticket no encontrado');
         return t;
+    }
+
+    // -----------------------------
+    // UPDATE STATUS
+    // -----------------------------
+    async updateStatus(condoId: string, ticketId: string, userId: string, status: string) {
+        const ticket = await this.prisma.ticket.findFirst({
+            where: { id: ticketId, condominiumId: condoId },
+            select: { id: true, status: true },
+        });
+
+        if (!ticket) throw new NotFoundException('Ticket no encontrado');
+
+        // Regla simple de workflow (rápida y segura):
+        // CLOSED es final (no se reabre por ahora)
+        if (ticket.status === 'CLOSED') {
+            throw new ForbiddenException('Ticket cerrado no puede modificarse');
+        }
+
+        return this.prisma.ticket.update({
+            where: { id: ticketId },
+            data: {
+                status: status as any,
+                statusUpdatedAt: new Date(),
+                statusUpdatedById: userId,
+            },
+        });
     }
 }

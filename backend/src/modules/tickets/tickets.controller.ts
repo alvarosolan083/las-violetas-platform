@@ -5,6 +5,7 @@ import {
     HttpStatus,
     HttpCode,
     Param,
+    Patch,
     Post,
     Query,
     Req,
@@ -12,6 +13,7 @@ import {
 } from '@nestjs/common';
 import {
     ApiBearerAuth,
+    ApiBody,
     ApiCreatedResponse,
     ApiForbiddenResponse,
     ApiOkResponse,
@@ -22,8 +24,11 @@ import {
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CondoMemberGuard } from '../condo/condo-member.guard';
+import { CondoRoles } from '../condo/condo-roles.decorator';
+import { CondoRolesGuard } from '../condo/condo-roles.guard';
 import { TicketsService } from './tickets.service';
 import { CreateTicketDto } from './dto/create-ticket.dto';
+import { UpdateTicketStatusDto } from './dto/update-ticket-status.dto';
 
 @ApiTags('tickets')
 @ApiBearerAuth('access-token')
@@ -90,5 +95,24 @@ export class TicketsController {
     @ApiParam({ name: 'ticketId', example: 'cml8p2aif0001ap30tsvlsica' })
     get(@Param('condoId') condoId: string, @Param('ticketId') ticketId: string) {
         return this.tickets.get(condoId, ticketId);
+    }
+
+    // -------------------------------
+    // UPDATE STATUS
+    // -------------------------------
+    @Patch(':ticketId/status')
+    @UseGuards(JwtAuthGuard, CondoMemberGuard, CondoRolesGuard)
+    @CondoRoles('ADMINISTRADOR', 'COMITE', 'COPROPIETARIO')
+    @ApiOkResponse({ description: 'Estado actualizado' })
+    @ApiUnauthorizedResponse({ description: 'Token inválido o sesión revocada' })
+    @ApiForbiddenResponse({ description: 'No tienes permisos' })
+    @ApiBody({ type: UpdateTicketStatusDto })
+    async updateStatus(
+        @Param('condoId') condoId: string,
+        @Param('ticketId') ticketId: string,
+        @Req() req: any,
+        @Body() dto: UpdateTicketStatusDto,
+    ) {
+        return this.tickets.updateStatus(condoId, ticketId, req.user.id, dto.status);
     }
 }
