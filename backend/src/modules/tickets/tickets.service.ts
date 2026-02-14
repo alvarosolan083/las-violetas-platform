@@ -86,7 +86,7 @@ export class TicketsService {
                         author: { select: { id: true, name: true, email: true } },
                     },
                 },
-                attachments: true,
+                attachments: { orderBy: { createdAt: 'asc' } },
             },
         });
 
@@ -177,6 +177,17 @@ export class TicketsService {
             },
         });
 
+        const attachments = await this.prisma.ticketAttachment.findMany({
+            where: { ticketId: ticket.id },
+            orderBy: { createdAt: 'asc' },
+            select: {
+                id: true,
+                url: true,
+                filename: true,
+                createdAt: true,
+            },
+        });
+
         const timeline: any[] = [];
 
         // created
@@ -219,6 +230,16 @@ export class TicketsService {
                 timestamp: c.createdAt,
                 user: c.author,
                 data: { commentId: c.id, message: c.message },
+            });
+        }
+
+        // attachments
+        for (const a of attachments) {
+            timeline.push({
+                type: 'attachment_added',
+                timestamp: a.createdAt,
+                user: null,
+                data: { attachmentId: a.id, url: a.url, filename: a.filename },
             });
         }
 
