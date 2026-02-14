@@ -144,26 +144,42 @@ export class TicketsService {
     // -----------------------------
     // TIMELINE (status changes + comments)
     // -----------------------------
-    async getTimeline(condoId: string, ticketId: string) {
+    async timeline(condoId: string, ticketId: string) {
         const ticket = await this.prisma.ticket.findFirst({
             where: { id: ticketId, condominiumId: condoId },
-            include: {
+            select: {
+                id: true,
+                title: true,
+                description: true,
+                status: true,
+                priority: true,
+                createdAt: true,
                 createdBy: { select: { id: true, name: true, email: true } },
+
+                statusUpdatedAt: true,
                 statusUpdatedBy: { select: { id: true, name: true, email: true } },
+
+                priorityUpdatedAt: true,
                 priorityUpdatedBy: { select: { id: true, name: true, email: true } },
-                comments: {
-                    include: {
-                        author: { select: { id: true, name: true, email: true } },
-                    },
-                },
             },
         });
 
         if (!ticket) throw new NotFoundException('Ticket no encontrado');
 
+        const comments = await this.prisma.ticketComment.findMany({
+            where: { ticketId: ticket.id },
+            orderBy: { createdAt: 'asc' },
+            select: {
+                id: true,
+                message: true,
+                createdAt: true,
+                author: { select: { id: true, name: true, email: true } },
+            },
+        });
+
         const timeline: any[] = [];
 
-        // Evento de creación
+        // created
         timeline.push({
             type: 'created',
             timestamp: ticket.createdAt,
@@ -176,48 +192,40 @@ export class TicketsService {
             },
         });
 
-        // Cambios de status
+        // status_changed
         if (ticket.statusUpdatedAt && ticket.statusUpdatedBy) {
             timeline.push({
                 type: 'status_changed',
                 timestamp: ticket.statusUpdatedAt,
                 user: ticket.statusUpdatedBy,
-                data: {
-                    newStatus: ticket.status,
-                },
+                data: { newStatus: ticket.status },
             });
         }
 
-        // Cambios de priority
+        // priority_changed
         if (ticket.priorityUpdatedAt && ticket.priorityUpdatedBy) {
             timeline.push({
                 type: 'priority_changed',
                 timestamp: ticket.priorityUpdatedAt,
                 user: ticket.priorityUpdatedBy,
-                data: {
-                    newPriority: ticket.priority,
-                },
+                data: { newPriority: ticket.priority },
             });
         }
 
-        // Comentarios
-        ticket.comments.forEach((c) => {
+        // comments
+        for (const c of comments) {
             timeline.push({
                 type: 'comment',
                 timestamp: c.createdAt,
                 user: c.author,
-                data: {
-                    message: c.message,
-                },
+                data: { commentId: c.id, message: c.message },
             });
-        });
+        }
 
-        // Ordenar por timestamp
-        timeline.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+        timeline.sort(
+            (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+        );
 
-        return {
-            ticketId: ticket.id,
-            timeline,
-        };
+        return { ticketId: ticket.id, timeline };
     }
 }

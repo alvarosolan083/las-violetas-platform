@@ -140,13 +140,10 @@ export class TicketsController {
     // TIMELINE
     // -------------------------------
     @Get(':ticketId/timeline')
-    @UseGuards(JwtAuthGuard, CondoMemberGuard)
-    @ApiOkResponse({ description: 'Línea de tiempo del ticket (status changes + comments)' })
+    @ApiOkResponse({ description: 'Timeline del ticket' })
     @ApiUnauthorizedResponse({ description: 'Token inválido o sesión revocada' })
     @ApiForbiddenResponse({ description: 'No eres miembro activo del condominio' })
-    @ApiParam({ name: 'condoId', example: 'violetas-condo' })
-    @ApiParam({ name: 'ticketId', example: 'cml8p2aif0001ap30tsvlsica' })
-    getTimeline(@Param('condoId') condoId: string, @Param('ticketId') ticketId: string) {
-        return this.tickets.getTimeline(condoId, ticketId);
+    timeline(@Param('condoId') condoId: string, @Param('ticketId') ticketId: string) {
+        return this.tickets.timeline(condoId, ticketId);
     }
 }
