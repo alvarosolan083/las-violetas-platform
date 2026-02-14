@@ -10,6 +10,7 @@ import { RateLimitModule } from './core/rate-limit/rate-limit.module';
 import { CondoModule } from './modules/condo/condo.module';
 import { TicketsModule } from './modules/tickets/tickets.module';
 import { TicketCommentsModule } from './modules/ticket-comments/ticket-comments.module';
+import { TicketAttachmentsModule } from './modules/ticket-attachments/ticket-attachments.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { TicketCommentsModule } from './modules/ticket-comments/ticket-comments.
     CondoModule,
     TicketsModule,
     TicketCommentsModule,
+    TicketAttachmentsModule,
   ],
   providers: [
     {
