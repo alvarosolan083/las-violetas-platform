@@ -30,6 +30,7 @@ import { TicketsService } from './tickets.service';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { UpdateTicketStatusDto } from './dto/update-ticket-status.dto';
 import { UpdateTicketPriorityDto } from './dto/update-ticket-priority.dto';
+import { UpdateTicketDto } from './dto/update-ticket.dto';
 
 @ApiTags('tickets')
 @ApiBearerAuth('access-token')
@@ -145,5 +146,40 @@ export class TicketsController {
     @ApiForbiddenResponse({ description: 'No eres miembro activo del condominio' })
     timeline(@Param('condoId') condoId: string, @Param('ticketId') ticketId: string) {
         return this.tickets.timeline(condoId, ticketId);
+    }
+
+    // -------------------------------
+    // UPDATE DETAILS
+    // -------------------------------
+    @Patch(':ticketId')
+    @UseGuards(JwtAuthGuard, CondoMemberGuard, CondoRolesGuard)
+    @CondoRoles('ADMINISTRADOR', 'COMITE')
+    @ApiOkResponse({ description: 'Ticket actualizado' })
+    @ApiUnauthorizedResponse({ description: 'Token inválido o sesión revocada' })
+    @ApiForbiddenResponse({ description: 'No tienes permisos' })
+    @ApiBody({ type: UpdateTicketDto })
+    updateDetails(
+        @Param('condoId') condoId: string,
+        @Param('ticketId') ticketId: string,
+        @Body() dto: UpdateTicketDto,
+    ) {
+        return this.tickets.updateDetails(condoId, ticketId, dto);
+    }
+
+    // -------------------------------
+    // CLOSE TICKET
+    // -------------------------------
+    @Patch(':ticketId/close')
+    @UseGuards(JwtAuthGuard, CondoMemberGuard, CondoRolesGuard)
+    @CondoRoles('ADMINISTRADOR', 'COMITE')
+    @ApiOkResponse({ description: 'Ticket cerrado' })
+    @ApiUnauthorizedResponse({ description: 'Token inválido o sesión revocada' })
+    @ApiForbiddenResponse({ description: 'No tienes permisos o el ticket ya está cerrado' })
+    close(
+        @Param('condoId') condoId: string,
+        @Param('ticketId') ticketId: string,
+        @Req() req: any,
+    ) {
+        return this.tickets.close(condoId, ticketId, req.user.id);
     }
 }

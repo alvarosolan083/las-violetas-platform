@@ -228,4 +228,50 @@ export class TicketsService {
 
         return { ticketId: ticket.id, timeline };
     }
+
+    // -----------------------------
+    // UPDATE DETAILS
+    // -----------------------------
+    async updateDetails(condoId: string, ticketId: string, dto: { title?: string; description?: string; category?: string }) {
+        const ticket = await this.prisma.ticket.findFirst({
+            where: { id: ticketId, condominiumId: condoId },
+            select: { id: true, status: true },
+        });
+        if (!ticket) throw new NotFoundException('Ticket no encontrado');
+        if (ticket.status === 'CLOSED') {
+            throw new ForbiddenException('Ticket cerrado no puede modificarse');
+        }
+
+        return this.prisma.ticket.update({
+            where: { id: ticketId },
+            data: {
+                ...(dto.title !== undefined ? { title: dto.title } : {}),
+                ...(dto.description !== undefined ? { description: dto.description } : {}),
+                ...(dto.category !== undefined ? { category: dto.category } : {}),
+            },
+        });
+    }
+
+    // -----------------------------
+    // CLOSE TICKET
+    // -----------------------------
+    async close(condoId: string, ticketId: string, userId: string) {
+        const ticket = await this.prisma.ticket.findFirst({
+            where: { id: ticketId, condominiumId: condoId },
+            select: { id: true, status: true },
+        });
+        if (!ticket) throw new NotFoundException('Ticket no encontrado');
+        if (ticket.status === 'CLOSED') {
+            throw new ForbiddenException('El ticket ya está cerrado');
+        }
+
+        return this.prisma.ticket.update({
+            where: { id: ticketId },
+            data: {
+                status: 'CLOSED',
+                statusUpdatedAt: new Date(),
+                statusUpdatedById: userId,
+            },
+        });
+    }
 }
