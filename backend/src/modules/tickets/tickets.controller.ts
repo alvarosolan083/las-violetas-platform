@@ -29,6 +29,7 @@ import { CondoRolesGuard } from '../condo/condo-roles.guard';
 import { TicketsService } from './tickets.service';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { UpdateTicketStatusDto } from './dto/update-ticket-status.dto';
+import { UpdateTicketPriorityDto } from './dto/update-ticket-priority.dto';
 
 @ApiTags('tickets')
 @ApiBearerAuth('access-token')
@@ -114,5 +115,38 @@ export class TicketsController {
         @Body() dto: UpdateTicketStatusDto,
     ) {
         return this.tickets.updateStatus(condoId, ticketId, req.user.id, dto.status);
+    }
+
+    // -------------------------------
+    // UPDATE PRIORITY
+    // -------------------------------
+    @Patch(':ticketId/priority')
+    @UseGuards(JwtAuthGuard, CondoMemberGuard, CondoRolesGuard)
+    @CondoRoles('ADMINISTRADOR', 'COMITE', 'COPROPIETARIO')
+    @ApiOkResponse({ description: 'Prioridad actualizada' })
+    @ApiUnauthorizedResponse({ description: 'Token inválido o sesión revocada' })
+    @ApiForbiddenResponse({ description: 'No tienes permisos' })
+    @ApiBody({ type: UpdateTicketPriorityDto })
+    async updatePriority(
+        @Param('condoId') condoId: string,
+        @Param('ticketId') ticketId: string,
+        @Req() req: any,
+        @Body() dto: UpdateTicketPriorityDto,
+    ) {
+        return this.tickets.updatePriority(condoId, ticketId, req.user.id, dto.priority);
+    }
+
+    // -------------------------------
+    // TIMELINE
+    // -------------------------------
+    @Get(':ticketId/timeline')
+    @UseGuards(JwtAuthGuard, CondoMemberGuard)
+    @ApiOkResponse({ description: 'Línea de tiempo del ticket (status changes + comments)' })
+    @ApiUnauthorizedResponse({ description: 'Token inválido o sesión revocada' })
+    @ApiForbiddenResponse({ description: 'No eres miembro activo del condominio' })
+    @ApiParam({ name: 'condoId', example: 'violetas-condo' })
+    @ApiParam({ name: 'ticketId', example: 'cml8p2aif0001ap30tsvlsica' })
+    getTimeline(@Param('condoId') condoId: string, @Param('ticketId') ticketId: string) {
+        return this.tickets.getTimeline(condoId, ticketId);
     }
 }

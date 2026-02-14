@@ -120,4 +120,104 @@ export class TicketsService {
             },
         });
     }
+
+    // -----------------------------
+    // UPDATE PRIORITY
+    // -----------------------------
+    async updatePriority(condoId: string, ticketId: string, userId: string, priority: string) {
+        const ticket = await this.prisma.ticket.findFirst({
+            where: { id: ticketId, condominiumId: condoId },
+            select: { id: true },
+        });
+        if (!ticket) throw new NotFoundException('Ticket no encontrado');
+
+        return this.prisma.ticket.update({
+            where: { id: ticketId },
+            data: {
+                priority: priority as any,
+                priorityUpdatedAt: new Date(),
+                priorityUpdatedById: userId,
+            },
+        });
+    }
+
+    // -----------------------------
+    // TIMELINE (status changes + comments)
+    // -----------------------------
+    async getTimeline(condoId: string, ticketId: string) {
+        const ticket = await this.prisma.ticket.findFirst({
+            where: { id: ticketId, condominiumId: condoId },
+            include: {
+                createdBy: { select: { id: true, name: true, email: true } },
+                statusUpdatedBy: { select: { id: true, name: true, email: true } },
+                priorityUpdatedBy: { select: { id: true, name: true, email: true } },
+                comments: {
+                    include: {
+                        author: { select: { id: true, name: true, email: true } },
+                    },
+                },
+            },
+        });
+
+        if (!ticket) throw new NotFoundException('Ticket no encontrado');
+
+        const timeline: any[] = [];
+
+        // Evento de creación
+        timeline.push({
+            type: 'created',
+            timestamp: ticket.createdAt,
+            user: ticket.createdBy,
+            data: {
+                title: ticket.title,
+                description: ticket.description,
+                status: ticket.status,
+                priority: ticket.priority,
+            },
+        });
+
+        // Cambios de status
+        if (ticket.statusUpdatedAt && ticket.statusUpdatedBy) {
+            timeline.push({
+                type: 'status_changed',
+                timestamp: ticket.statusUpdatedAt,
+                user: ticket.statusUpdatedBy,
+                data: {
+                    newStatus: ticket.status,
+                },
+            });
+        }
+
+        // Cambios de priority
+        if (ticket.priorityUpdatedAt && ticket.priorityUpdatedBy) {
+            timeline.push({
+                type: 'priority_changed',
+                timestamp: ticket.priorityUpdatedAt,
+                user: ticket.priorityUpdatedBy,
+                data: {
+                    newPriority: ticket.priority,
+                },
+            });
+        }
+
+        // Comentarios
+        ticket.comments.forEach((c) => {
+            timeline.push({
+                type: 'comment',
+                timestamp: c.createdAt,
+                user: c.author,
+                data: {
+                    message: c.message,
+                },
+            });
+        });
+
+        // Ordenar por timestamp
+        timeline.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+
+        return {
+            ticketId: ticket.id,
+            timeline,
+        };
+    }
 }
