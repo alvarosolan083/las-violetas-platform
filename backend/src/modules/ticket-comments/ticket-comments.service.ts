@@ -14,7 +14,7 @@ export class TicketCommentsService {
 
         if (!exists) throw new NotFoundException('Ticket no encontrado');
 
-        return this.prisma.ticketComment.create({
+        const comment = await this.prisma.ticketComment.create({
             data: {
                 ticketId,
                 authorId,
@@ -24,6 +24,20 @@ export class TicketCommentsService {
                 author: { select: { id: true, name: true, email: true } },
             },
         });
+
+        await this.prisma.ticketEvent.create({
+            data: {
+                ticketId,
+                type: 'COMMENT_CREATED',
+                actorId: authorId,
+                payload: {
+                    commentId: comment.id,
+                    message: dto.message,
+                },
+            },
+        });
+
+        return comment;
     }
 
     list(condoId: string, ticketId: string) {

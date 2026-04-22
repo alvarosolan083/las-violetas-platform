@@ -1,7 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsIn } from 'class-validator';
 
-const STATUSES = ['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'] as const;
+// Aligned with Prisma enum TicketStatus (RESOLVED removed)
+const STATUSES = ['OPEN', 'IN_PROGRESS', 'CLOSED'] as const;
 export type TicketStatusDto = (typeof STATUSES)[number];
 
 export class UpdateTicketStatusDto {

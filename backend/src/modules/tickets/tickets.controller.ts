@@ -161,9 +161,10 @@ export class TicketsController {
     updateDetails(
         @Param('condoId') condoId: string,
         @Param('ticketId') ticketId: string,
+        @Req() req: any,
         @Body() dto: UpdateTicketDto,
     ) {
-        return this.tickets.updateDetails(condoId, ticketId, dto);
+        return this.tickets.updateDetails(condoId, ticketId, req.user.id, dto);
     }
 
     // -------------------------------

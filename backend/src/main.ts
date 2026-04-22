@@ -7,11 +7,12 @@ import { RedisService } from './core/redis/redis.service';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  app.enableCors({
+    origin: ['http://localhost:5173'],
+  });
+
   app.enableShutdownHooks();
-
   app.useGlobalPipes(createValidationPipe());
-
-  // Para que req.ip funcione correctamente detrás de proxies (Nginx, Railway, Render, etc.)
   app.getHttpAdapter().getInstance().set('trust proxy', 1);
 
   const swaggerConfig = new DocumentBuilder()
@@ -31,15 +32,13 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('docs', app, document);
 
-  // --- PRUEBA DE CONEXIÓN REDIS ---
   try {
     const redisService = app.get(RedisService);
     const result = await redisService.ping();
     console.log('🚀 REDIS STATUS =>', result);
-  } catch (error) {
+  } catch (error: any) {
     console.error('❌ REDIS ERROR =>', error.message);
   }
-  // --------------------------------
 
   await app.listen(3000);
 }

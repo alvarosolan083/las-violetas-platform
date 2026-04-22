@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 
@@ -17,8 +17,8 @@ export class TicketsService {
     // -----------------------------
     // CREATE
     // -----------------------------
-    create(condoId: string, userId: string, dto: CreateTicketDto) {
-        return this.prisma.ticket.create({
+    async create(condoId: string, userId: string, dto: CreateTicketDto) {
+        const ticket = await this.prisma.ticket.create({
             data: {
                 condominiumId: condoId,
                 createdById: userId,
@@ -28,6 +28,23 @@ export class TicketsService {
                 priority: dto.priority ?? 'MEDIUM',
             },
         });
+
+        await this.prisma.ticketEvent.create({
+            data: {
+                ticketId: ticket.id,
+                type: 'TICKET_CREATED',
+                actorId: userId,
+                payload: {
+                    title: ticket.title,
+                    description: ticket.description,
+                    category: ticket.category,
+                    priority: ticket.priority,
+                    status: ticket.status,
+                },
+            },
+        });
+
+        return ticket;
     }
 
     // -----------------------------
@@ -111,7 +128,7 @@ export class TicketsService {
             throw new ForbiddenException('Ticket cerrado no puede modificarse');
         }
 
-        return this.prisma.ticket.update({
+        const updated = await this.prisma.ticket.update({
             where: { id: ticketId },
             data: {
                 status: status as any,
@@ -119,6 +136,22 @@ export class TicketsService {
                 statusUpdatedById: userId,
             },
         });
+
+        if (ticket.status !== status) {
+            await this.prisma.ticketEvent.create({
+                data: {
+                    ticketId,
+                    type: 'STATUS_CHANGED',
+                    actorId: userId,
+                    payload: {
+                        previousStatus: ticket.status,
+                        newStatus: status,
+                    },
+                },
+            });
+        }
+
+        return updated;
     }
 
     // -----------------------------
@@ -127,11 +160,11 @@ export class TicketsService {
     async updatePriority(condoId: string, ticketId: string, userId: string, priority: string) {
         const ticket = await this.prisma.ticket.findFirst({
             where: { id: ticketId, condominiumId: condoId },
-            select: { id: true },
+            select: { id: true, priority: true },
         });
         if (!ticket) throw new NotFoundException('Ticket no encontrado');
 
-        return this.prisma.ticket.update({
+        const updated = await this.prisma.ticket.update({
             where: { id: ticketId },
             data: {
                 priority: priority as any,
@@ -139,6 +172,22 @@ export class TicketsService {
                 priorityUpdatedById: userId,
             },
         });
+
+        if (ticket.priority !== priority) {
+            await this.prisma.ticketEvent.create({
+                data: {
+                    ticketId,
+                    type: 'PRIORITY_CHANGED',
+                    actorId: userId,
+                    payload: {
+                        previousPriority: ticket.priority,
+                        newPriority: priority,
+                    },
+                },
+            });
+        }
+
+        return updated;
     }
 
     // -----------------------------
@@ -147,130 +196,85 @@ export class TicketsService {
     async timeline(condoId: string, ticketId: string) {
         const ticket = await this.prisma.ticket.findFirst({
             where: { id: ticketId, condominiumId: condoId },
-            select: {
-                id: true,
-                title: true,
-                description: true,
-                status: true,
-                priority: true,
-                createdAt: true,
-                createdBy: { select: { id: true, name: true, email: true } },
-
-                statusUpdatedAt: true,
-                statusUpdatedBy: { select: { id: true, name: true, email: true } },
-
-                priorityUpdatedAt: true,
-                priorityUpdatedBy: { select: { id: true, name: true, email: true } },
-            },
+            select: { id: true },
         });
 
         if (!ticket) throw new NotFoundException('Ticket no encontrado');
 
-        const comments = await this.prisma.ticketComment.findMany({
-            where: { ticketId: ticket.id },
+        const events = await this.prisma.ticketEvent.findMany({
+            where: { ticketId },
             orderBy: { createdAt: 'asc' },
-            select: {
-                id: true,
-                message: true,
-                createdAt: true,
-                author: { select: { id: true, name: true, email: true } },
+            include: {
+                actor: { select: { id: true, name: true, email: true } },
             },
         });
 
-        const attachments = await this.prisma.ticketAttachment.findMany({
-            where: { ticketId: ticket.id },
-            orderBy: { createdAt: 'asc' },
-            select: {
-                id: true,
-                url: true,
-                filename: true,
-                createdAt: true,
-            },
-        });
-
-        const timeline: any[] = [];
-
-        // created
-        timeline.push({
-            type: 'created',
-            timestamp: ticket.createdAt,
-            user: ticket.createdBy,
-            data: {
-                title: ticket.title,
-                description: ticket.description,
-                status: ticket.status,
-                priority: ticket.priority,
-            },
-        });
-
-        // status_changed
-        if (ticket.statusUpdatedAt && ticket.statusUpdatedBy) {
-            timeline.push({
-                type: 'status_changed',
-                timestamp: ticket.statusUpdatedAt,
-                user: ticket.statusUpdatedBy,
-                data: { newStatus: ticket.status },
-            });
-        }
-
-        // priority_changed
-        if (ticket.priorityUpdatedAt && ticket.priorityUpdatedBy) {
-            timeline.push({
-                type: 'priority_changed',
-                timestamp: ticket.priorityUpdatedAt,
-                user: ticket.priorityUpdatedBy,
-                data: { newPriority: ticket.priority },
-            });
-        }
-
-        // comments
-        for (const c of comments) {
-            timeline.push({
-                type: 'comment',
-                timestamp: c.createdAt,
-                user: c.author,
-                data: { commentId: c.id, message: c.message },
-            });
-        }
-
-        // attachments
-        for (const a of attachments) {
-            timeline.push({
-                type: 'attachment_added',
-                timestamp: a.createdAt,
-                user: null,
-                data: { attachmentId: a.id, url: a.url, filename: a.filename },
-            });
-        }
-
-        timeline.sort(
-            (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
-        );
-
-        return { ticketId: ticket.id, timeline };
+        return {
+            ticketId,
+            timeline: events.map((e) => ({
+                id: e.id,
+                type: e.type,
+                createdAt: e.createdAt,
+                message: e.message,
+                payload: e.payload,
+                actor: e.actor,
+            })),
+        };
     }
 
     // -----------------------------
     // UPDATE DETAILS
     // -----------------------------
-    async updateDetails(condoId: string, ticketId: string, dto: { title?: string; description?: string; category?: string }) {
+    async updateDetails(condoId: string, ticketId: string, userId: string, dto: { title?: string; description?: string; category?: string }) {
         const ticket = await this.prisma.ticket.findFirst({
             where: { id: ticketId, condominiumId: condoId },
-            select: { id: true, status: true },
+            select: { id: true, status: true, title: true, description: true, category: true },
         });
         if (!ticket) throw new NotFoundException('Ticket no encontrado');
         if (ticket.status === 'CLOSED') {
             throw new ForbiddenException('Ticket cerrado no puede modificarse');
         }
 
-        return this.prisma.ticket.update({
-            where: { id: ticketId },
-            data: {
-                ...(dto.title !== undefined ? { title: dto.title } : {}),
-                ...(dto.description !== undefined ? { description: dto.description } : {}),
-                ...(dto.category !== undefined ? { category: dto.category } : {}),
-            },
-        });
+        // Detectar solo campos realmente modificados
+        const changes: Record<string, { before: string | null; after: string | null }> = {};
+
+        if (dto.title !== undefined && dto.title !== ticket.title) {
+            changes.title = { before: ticket.title, after: dto.title };
+        }
+        if (dto.description !== undefined && dto.description !== ticket.description) {
+            changes.description = { before: ticket.description, after: dto.description };
+        }
+        if (dto.category !== undefined && dto.category !== ticket.category) {
+            changes.category = { before: ticket.category, after: dto.category };
+        }
+
+        if (Object.keys(changes).length === 0) {
+            throw new BadRequestException('No se detectaron cambios reales en los detalles del ticket');
+        }
+
+        // Construir data de update solo con campos cambiados
+        const data: Record<string, string> = {};
+        for (const key of Object.keys(changes)) {
+            data[key] = changes[key].after!;
+        }
+
+        const [updated] = await this.prisma.$transaction([
+            this.prisma.ticket.update({
+                where: { id: ticketId },
+                data,
+            }),
+            this.prisma.ticketEvent.create({
+                data: {
+                    ticketId,
+                    actorId: userId,
+                    type: 'DETAILS_UPDATED',
+                    message: 'Detalles del ticket actualizados',
+                    payload: { changes },
+                },
+            }),
+        ]);
+
+        return updated;
     }
 
     // -----------------------------
@@ -286,7 +290,7 @@ export class TicketsService {
             throw new ForbiddenException('El ticket ya está cerrado');
         }
 
-        return this.prisma.ticket.update({
+        const updated = await this.prisma.ticket.update({
             where: { id: ticketId },
             data: {
                 status: 'CLOSED',
@@ -294,5 +298,19 @@ export class TicketsService {
                 statusUpdatedById: userId,
             },
         });
+
+        await this.prisma.ticketEvent.create({
+            data: {
+                ticketId,
+                type: 'TICKET_CLOSED',
+                actorId: userId,
+                payload: {
+                    previousStatus: ticket.status,
+                    newStatus: 'CLOSED',
+                },
+            },
+        });
+
+        return updated;
     }
 }

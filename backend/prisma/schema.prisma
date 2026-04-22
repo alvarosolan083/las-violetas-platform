@@ -23,8 +23,18 @@ enum CondoRole {
 enum TicketStatus {
   OPEN
   IN_PROGRESS
-  RESOLVED
   CLOSED
+}
+
+enum TicketEventType {
+  TICKET_CREATED
+  STATUS_CHANGED
+  PRIORITY_CHANGED
+  COMMENT_CREATED
+  ATTACHMENT_ADDED
+  ATTACHMENT_DELETED
+  TICKET_CLOSED
+  DETAILS_UPDATED
 }
 
 enum TicketPriority {
@@ -32,6 +42,13 @@ enum TicketPriority {
   MEDIUM
   HIGH
   URGENT
+}
+
+enum ReservationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
 }
 
 model Condominium {
@@ -45,16 +62,19 @@ model Condominium {
   tickets       Ticket[]
   announcements Announcement[]
   units         Unit[]
+  commonSpaces  CommonSpace[]
+  reservations  Reservation[]
+  documents     Document[]
 }
 
 model CondoMembership {
-  id            String     @id @default(cuid())
+  id            String      @id @default(cuid())
   condominiumId String
   userId        String
   role          CondoRole
-  active        Boolean    @default(true)
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
+  active        Boolean     @default(true)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
   condominium   Condominium @relation(fields: [condominiumId], references: [id])
   user          User        @relation(fields: [userId], references: [id])
@@ -65,12 +85,12 @@ model CondoMembership {
 }
 
 model Unit {
-  id            String   @id @default(cuid())
+  id            String      @id @default(cuid())
   condominiumId String
-  code          String   // ej: "T1-1204" o "1204"
+  code          String
   floor         Int?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
   condominium   Condominium @relation(fields: [condominiumId], references: [id])
 
@@ -79,105 +99,222 @@ model Unit {
 }
 
 model Ticket {
-  id            String         @id @default(cuid())
-  condominiumId String
-  createdById   String
-  title         String
-  description   String
-  status        TicketStatus   @default(OPEN)
-  priority      TicketPriority @default(MEDIUM)
-  category      String?        // "Portón", "Piscina", "Filtración", etc
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-
-  statusUpdatedAt   DateTime?
-  statusUpdatedById String?
-
-  priorityUpdatedAt   DateTime?
+  id                 String         @id @default(cuid())
+  condominiumId      String
+  createdById        String
+  title              String
+  description        String
+  status             TicketStatus   @default(OPEN)
+  priority           TicketPriority @default(MEDIUM)
+  category           String?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  statusUpdatedAt    DateTime?
+  statusUpdatedById  String?
+  priorityUpdatedAt  DateTime?
   priorityUpdatedById String?
 
-  condominium Condominium @relation(fields: [condominiumId], references: [id])
-  createdBy   User        @relation(fields: [createdById], references: [id])
+  condominium        Condominium    @relation(fields: [condominiumId], references: [id])
+  createdBy          User           @relation(fields: [createdById], references: [id])
 
-  statusUpdatedBy   User? @relation("TicketStatusUpdatedBy", fields: [statusUpdatedById], references: [id])
-  priorityUpdatedBy User? @relation("TicketPriorityUpdatedBy", fields: [priorityUpdatedById], references: [id])
+  statusUpdatedBy    User?          @relation("TicketStatusUpdatedBy", fields: [statusUpdatedById], references: [id])
+  priorityUpdatedBy  User?          @relation("TicketPriorityUpdatedBy", fields: [priorityUpdatedById], references: [id])
 
-  comments    TicketComment[]
-  attachments TicketAttachment[]
+  comments           TicketComment[]
+  attachments        TicketAttachment[]
+  events             TicketEvent[]
 
   @@index([condominiumId, status])
   @@index([createdById])
 }
 
 model TicketComment {
-  id        String   @id @default(cuid())
-  ticketId  String
-  authorId  String
-  message   String
-  createdAt DateTime @default(now())
+  id         String   @id @default(cuid())
+  ticketId   String
+  authorId   String
+  message    String
+  createdAt  DateTime @default(now())
 
-  ticket Ticket @relation(fields: [ticketId], references: [id])
-  author User   @relation(fields: [authorId], references: [id])
+  ticket      Ticket  @relation(fields: [ticketId], references: [id])
+  author      User    @relation(fields: [authorId], references: [id])
 
   @@index([ticketId])
 }
 
 model TicketAttachment {
-  id        String   @id @default(cuid())
-  ticketId  String
-  url       String
-  filename  String?
-  createdAt DateTime @default(now())
+  id            String   @id @default(cuid())
+  ticketId      String
+  fileName      String
+  originalName  String
+  mimeType      String
+  sizeBytes     Int
+  fileUrl       String
+  uploadedById  String
+  createdAt     DateTime @default(now())
 
-  ticket Ticket @relation(fields: [ticketId], references: [id])
+  ticket        Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  uploadedBy    User     @relation("UserTicketAttachments", fields: [uploadedById], references: [id])
 
   @@index([ticketId])
+  @@index([uploadedById])
+}
+
+model TicketEvent {
+  id        String          @id @default(cuid())
+  ticketId  String
+  actorId   String?
+  type      TicketEventType
+  message   String?
+  payload   Json?
+  createdAt DateTime        @default(now())
+
+  ticket    Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  actor     User?  @relation("UserTicketEvents", fields: [actorId], references: [id])
+
+  @@index([ticketId, createdAt])
+  @@index([actorId])
 }
 
 model Announcement {
-  id            String   @id @default(cuid())
+  id            String      @id @default(cuid())
   condominiumId String
   createdById   String
   title         String
   body          String
-  createdAt     DateTime @default(now())
+  createdAt     DateTime    @default(now())
 
-  condominium Condominium @relation(fields: [condominiumId], references: [id])
-  createdBy   User        @relation(fields: [createdById], references: [id])
+  condominium   Condominium @relation(fields: [condominiumId], references: [id])
+  createdBy     User        @relation(fields: [createdById], references: [id])
 
   @@index([condominiumId])
 }
 
 model Department {
-  id        String   @id @default(cuid())
-  tower     String?
-  number    String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String   @id @default(cuid())
+  tower      String?
+  number     String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  users     User[]
+  users      User[]
 }
 
 model User {
-  id           String   @id @default(cuid())
-  name         String
-  email        String   @unique
-  passwordHash String
-  role         Role     @default(RESIDENTE)
-  active       Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                     String   @id @default(cuid())
+  name                   String
+  email                  String   @unique
+  passwordHash           String
+  role                   Role     @default(RESIDENTE)
+  active                 Boolean  @default(true)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  departmentId           String?
 
-  departmentId String?
-  department   Department? @relation(fields: [departmentId], references: [id])
+  department             Department?        @relation(fields: [departmentId], references: [id])
 
-  memberships    CondoMembership[]
-  tickets        Ticket[]
-  ticketComments TicketComment[]
-  announcements  Announcement[]
+  memberships            CondoMembership[]
+  tickets                Ticket[]
+  ticketComments         TicketComment[]
+  announcements          Announcement[]
+  reservations           Reservation[]
+  decidedReservations    Reservation[]      @relation("ReservationDecidedBy")
 
-  statusUpdatedTickets   Ticket[] @relation("TicketStatusUpdatedBy")
-  priorityUpdatedTickets Ticket[] @relation("TicketPriorityUpdatedBy")
+  statusUpdatedTickets   Ticket[]           @relation("TicketStatusUpdatedBy")
+  priorityUpdatedTickets Ticket[]           @relation("TicketPriorityUpdatedBy")
+
+  uploadedDocuments      Document[]         @relation("UserUploadedDocuments")
+  ticketAttachments      TicketAttachment[] @relation("UserTicketAttachments")
+  ticketEvents           TicketEvent[]      @relation("UserTicketEvents")
 
   @@index([departmentId])
+}
+
+model CommonSpace {
+  id                String            @id @default(cuid())
+  condominiumId     String
+  name              String
+  description       String?
+  price             Int               @default(0)
+  advanceHours      Int               @default(0)
+  dailyLimit        Int               @default(0)
+  weeklyLimit       Int               @default(0)
+  cancelBeforeHours Int               @default(0)
+  requiresApproval  Boolean           @default(true)
+  seasonStart       DateTime?
+  seasonEnd         DateTime?
+  allowedWeekdays   Int[]             @default([])
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  condominium       Condominium       @relation(fields: [condominiumId], references: [id])
+  slots             CommonSpaceSlot[]
+  reservations      Reservation[]
+
+  @@index([condominiumId])
+}
+
+model CommonSpaceSlot {
+  id              String        @id @default(cuid())
+  commonSpaceId   String
+  label           String
+  startTime       String
+  endTime         String
+
+  commonSpace     CommonSpace   @relation(fields: [commonSpaceId], references: [id], onDelete: Cascade)
+  reservations    Reservation[]
+
+  @@index([commonSpaceId])
+}
+
+model Reservation {
+  id             String            @id @default(cuid())
+  condominiumId  String
+  commonSpaceId  String
+  slotId         String
+  date           DateTime
+  startAt        DateTime
+  endAt          DateTime
+  status         ReservationStatus @default(PENDING)
+  createdById    String
+  decidedById    String?
+  decidedAt      DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  createdBy      User              @relation(fields: [createdById], references: [id])
+  condominium    Condominium       @relation(fields: [condominiumId], references: [id])
+  commonSpace    CommonSpace       @relation(fields: [commonSpaceId], references: [id])
+  slot           CommonSpaceSlot   @relation(fields: [slotId], references: [id])
+  decidedBy      User?             @relation("ReservationDecidedBy", fields: [decidedById], references: [id])
+
+  @@index([condominiumId])
+  @@index([commonSpaceId])
+  @@index([slotId])
+  @@index([createdById])
+  @@index([date])
+  @@index([status])
+}
+
+model Document {
+  id            String      @id @default(cuid())
+  condominiumId String
+  title         String
+  description   String?
+  category      String
+  fileName      String
+  originalName  String
+  mimeType      String
+  sizeBytes     Int
+  fileUrl       String
+  uploadedById  String
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  condominium   Condominium @relation(fields: [condominiumId], references: [id], onDelete: Cascade)
+  uploadedBy    User        @relation("UserUploadedDocuments", fields: [uploadedById], references: [id])
+
+  @@index([condominiumId])
+  @@index([uploadedById])
+  @@index([category])
+  @@map("documents")
 }

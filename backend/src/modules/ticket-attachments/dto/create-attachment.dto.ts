@@ -1,14 +1,10 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, MinLength } from 'class-validator';
+import { ApiProperty } from "@nestjs/swagger";
 
 export class CreateAttachmentDto {
-    @ApiProperty({ example: 'https://example.com/foto-porton.jpg' })
-    @IsString()
-    @MinLength(8)
-    url: string;
-
-    @ApiPropertyOptional({ example: 'foto-porton.jpg' })
-    @IsOptional()
-    @IsString()
-    filename?: string;
+    @ApiProperty({
+        type: "string",
+        format: "binary",
+        description: "Archivo adjunto (imagen o PDF, máx. 10 MB)",
+    })
+    file: Express.Multer.File;
 }
